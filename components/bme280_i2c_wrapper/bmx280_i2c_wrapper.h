@@ -39,20 +39,23 @@ namespace bme280_i2c_wrapper {
 /// This class implements support for the BME280 Temperature+Pressure+Humidity sensor.
 class BME280I2CWrapper : public PollingComponent, public i2c::I2CDevice {
  public:
-  void set_temperature_sensor(sensor::Sensor *temperature_sensor) { temperature_sensor_ = temperature_sensor; }
-  void set_pressure_sensor(sensor::Sensor *pressure_sensor) { pressure_sensor_ = pressure_sensor; }
-  void set_humidity_sensor(sensor::Sensor *humidity_sensor) { humidity_sensor_ = humidity_sensor; }
+  void set_temperature_sensor(sensor::Sensor *sensor) { temperature_sensor_ = sensor; }
+  void set_humidity_sensor(sensor::Sensor *sensor) { humidity_sensor_ = sensor; }
+  void set_pressure_sensor(sensor::Sensor *sensor) { pressure_sensor_ = sensor; }
+  void set_dew_point_sensor(sensor::Sensor *sensor) { dew_point_sensor_ = sensor; }
+  void set_humidity_absolute_sensor(sensor::Sensor *sensor) { humidity_absolute_sensor_ = sensor; }
+  void set_pressure_sealevel_sensor(sensor::Sensor *sensor) { pressure_sealevel_sensor_ = sensor; }
   void set_power_pin(InternalGPIOPin *pin) { power_pin_ = pin; }
   void set_altitude(float altitude) { altitude_ = altitude; }
 
   /// Set the oversampling value for the temperature sensor. Default is 16x.
-  void set_temperature_oversampling(EnumOversampling oversampling) { settings.osr_t = oversampling; };
+  void set_temperature_oversampling(EnumOversampling oversampling) { settings_.osr_t = oversampling; };
   /// Set the oversampling value for the humidity sensor. Default is 16x.
-  void set_humidity_oversampling(EnumOversampling oversampling)  { settings.osr_h = oversampling; };
+  void set_humidity_oversampling(EnumOversampling oversampling)  { settings_.osr_h = oversampling; };
   /// Set the oversampling value for the pressure sensor. Default is 16x.
-  void set_pressure_oversampling(EnumOversampling oversampling)  { settings.osr_p = oversampling; };
+  void set_pressure_oversampling(EnumOversampling oversampling)  { settings_.osr_p = oversampling; };
   /// Set the IIR Filter used to increase accuracy, defaults to no IIR Filter.
-  void set_iir_filter(EnumIIRFilter iir_filter)  { settings.filter = iir_filter; };
+  void set_iir_filter(EnumIIRFilter iir_filter)  { settings_.filter = iir_filter; };
 
   // ========== INTERNAL METHODS ==========
   // (In most use cases you won't need these)
@@ -65,6 +68,9 @@ protected:
   sensor::Sensor *temperature_sensor_{nullptr};
   sensor::Sensor *humidity_sensor_{nullptr};
   sensor::Sensor *pressure_sensor_{nullptr};
+  sensor::Sensor *dew_point_sensor_{nullptr};
+  sensor::Sensor *humidity_absolute_sensor_{nullptr};
+  sensor::Sensor *pressure_sealevel_sensor_{nullptr};
 
   InternalGPIOPin *power_pin_{nullptr};
   float altitude_{0};
@@ -82,17 +88,18 @@ private:
   bool   startMeasure();
   bool   readSensorData();
 
-  double getTemperature() { return comp_data.temperature; };
-  double getHumidity() { return comp_data.humidity; };
-  double getPressure() { return comp_data.pressure / 100.0; };
-  double getPressureAtSeaLevel();
-  double getDewPoint(double temperature, double humidity);
+  double getTemperature() { return comp_data_.temperature; };
+  double getHumidity() { return comp_data_.humidity; };
+  double getPressure() { return comp_data_.pressure / 100.0; };
+  double getDewPoint();
+  double getHumidityAbsolute();
+  double getPressureSeaLevel();
 
-  uint8_t dev_addr;
-  uint32_t measure_delay;
-  struct bme280_dev dev;
-  struct bme280_settings settings;
-  struct bme280_data comp_data;
+  uint8_t dev_addr_;
+  uint32_t measure_delay_;
+  struct bme280_dev dev_;
+  struct bme280_settings settings_;
+  struct bme280_data comp_data_;
 };
 
 }  // namespace bme280_i2c_wrapper
