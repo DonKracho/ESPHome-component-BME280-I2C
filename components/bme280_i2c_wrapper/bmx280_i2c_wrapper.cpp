@@ -8,8 +8,6 @@
 #include <esphome/core/component.h>
 
 #define BME280_ERROR_WRONG_CHIP_ID "Wrong chip ID"
-#undef LOG_STR
-#define LOG_STR(x) x
 
 namespace esphome {
 namespace bme280_i2c_wrapper {
