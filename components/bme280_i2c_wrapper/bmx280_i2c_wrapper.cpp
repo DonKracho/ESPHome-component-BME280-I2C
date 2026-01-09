@@ -86,7 +86,7 @@ void BME280I2CWrapper::setup() {
   if (power_pin_ != nullptr) {
     power_pin_->setup();
     power_pin_->digital_write(HIGH);
-    delay(10);
+    delay(100);
   }
 
   // Mark as not failed before initializing. Some devices will turn off sensors to save on batteries
@@ -107,7 +107,7 @@ void BME280I2CWrapper::setup() {
       this->mark_failed(LOG_STR(ESP_LOG_MSG_COMM_FAIL));
     }
   } else {
-    ESP_LOGD(TAG, "chip_id=%0x02x", dev_.chip_id);
+    ESP_LOGD(TAG, "chip_id=0x%02x", dev_.chip_id);
   }
 
   // Recommended mode of operation: Indoor navigation
@@ -117,9 +117,9 @@ void BME280I2CWrapper::setup() {
   // settings_.filter = BME280_FILTER_COEFF_16;
   settings_.standby_time = BME280_STANDBY_TIME_500_MS;
 
-  uint8_t settings_sel = BME280_SEL_OSR_PRESS | BME280_SEL_OSR_TEMP | BME280_SEL_OSR_HUM | BME280_SEL_FILTER;
+  settings_select_ = BME280_SEL_OSR_PRESS | BME280_SEL_OSR_TEMP | BME280_SEL_OSR_HUM | BME280_SEL_FILTER;
 
-  res = bme280_set_sensor_settings(settings_sel, &settings_, &dev_);
+  res = bme280_set_sensor_settings(settings_select_, &settings_, &dev_);
 
   if (res != BME280_OK) {
     ESP_LOGE(TAG, "settings error %d", res);
@@ -183,13 +183,39 @@ float BME280I2CWrapper::get_setup_priority() const {
   return setup_priority::DATA;
 }
 
+void BME280I2CWrapper::loop() {
+  if (measure_pending) {
+    update();
+  }
+}
+
 void BME280I2CWrapper::update() {
-  if (power_pin_ != nullptr) {
+  int8_t rslt = BME280_OK;
+  time_t ms = millis();
+
+  if (power_pin_ != nullptr && !power_pin_->digital_read()) {
     power_pin_->digital_write(HIGH);
-    delay(200);
+    measure_pending = true;
+    measure_trigger = ms + 1000;  // Wait 1s for bme to settle
+  }
+  
+  if (ms < measure_trigger) {
+    // avoid blocking of loop for more than 30ms
+    delay(20);
+    return;
   }
 
-  if (forceMeasure()) {
+  if (measure_pending) {
+    // BME280 has bees switched off 
+    rslt = bme280_set_sensor_settings(settings_select_, &settings_, &dev_);
+    measure_pending = false;
+  }
+
+  if (rslt == BME280_OK) {
+    rslt = forceMeasure();
+  }
+
+  if (rslt == BME280_OK) {
     if (temperature_sensor_ != nullptr) {
       temperature_sensor_->publish_state(getTemperature());
     }
@@ -209,7 +235,7 @@ void BME280I2CWrapper::update() {
       pressure_sealevel_sensor_->publish_state(getPressureSeaLevel());
     }
   } else {
-    ESP_LOGE(TAG, "BME measure failded");
+    ESP_LOGE(TAG, "BME measure failed error: %d", rslt);
   }
 
   if (power_pin_ != nullptr) {
@@ -239,31 +265,42 @@ double BME280I2CWrapper::getPressureSeaLevel() {
   return getPressure() / powf(1 - (altitude_/44330), 5.255); // refer to bmp180 documentation
 }
 
-bool BME280I2CWrapper::readSensorData() {
-  return bme280_get_sensor_data(BME280_ALL, &comp_data_, &dev_) == 0;
+int8_t BME280I2CWrapper::readSensorData() {
+  return bme280_get_sensor_data(BME280_ALL, &comp_data_, &dev_);
 }
 
-bool BME280I2CWrapper::startMeasure() {
+int8_t BME280I2CWrapper::startMeasure() {
   uint8_t stat = 0;
   int8_t rslt = bme280_set_sensor_mode(BME280_POWERMODE_NORMAL, &dev_);
-  do {
-    dev_.delay_us(measure_delay_, &dev_.intf_ptr);   // wait for the measurement to complete
-    rslt = bme280_get_regs(BME280_REG_STATUS, &stat, 1, &dev_);
-  } while (rslt == 0 && (stat & 0x08) != 0);
-  return rslt == 0;
+  if (rslt == BME280_OK) {
+    do {
+      dev_.delay_us(measure_delay_, &dev_.intf_ptr);   // wait for the measurement to complete
+      rslt = bme280_get_regs(BME280_REG_STATUS, &stat, 1, &dev_);
+    } while (rslt == BME280_OK && (stat & 0x08) != 0);
+  }
+  return rslt;
 }
 
-bool BME280I2CWrapper::forceMeasure() {
+int8_t BME280I2CWrapper::forceMeasure() {
   uint8_t stat = 0;
   int8_t rslt = bme280_set_sensor_mode(BME280_POWERMODE_FORCED, &dev_);
-  do {
-    dev_.delay_us(measure_delay_, &dev_.intf_ptr);   // wait for the measurement to complete
-    rslt = bme280_get_regs(BME280_REG_STATUS, &stat, 1, &dev_);
-  } while (rslt == 0 && (stat & 0x08) != 0);
-  if (rslt == 0) {
-    rslt = bme280_get_sensor_data(BME280_ALL, &comp_data_, &dev_);
-  };
-  return rslt == 0 && comp_data_.pressure > 90000.0;
+  if (rslt == BME280_OK) {
+    do {
+      dev_.delay_us(measure_delay_, &dev_.intf_ptr);   // wait for the measurement to complete
+      rslt = bme280_get_regs(BME280_REG_STATUS, &stat, 1, &dev_);
+    } while (rslt == BME280_OK && (stat & 0x08) != 0);
+    if (rslt == BME280_OK) {
+      rslt = bme280_get_sensor_data(BME280_ALL, &comp_data_, &dev_);
+    } else {
+      ESP_LOGE(TAG, "bme280_get_regs() failed %d)", rslt);
+    }
+  } else {
+    ESP_LOGE(TAG, "bme280_set_sensor_mode() failed %d)", rslt);
+  }
+  if (rslt != BME280_OK) {
+    ESP_LOGE(TAG, "bme280_get_sensor_data() failed %d)", rslt);
+  }
+  return rslt;
 }
 
 int8_t BME280I2CWrapper::begin(int addr) {
@@ -275,9 +312,7 @@ int8_t BME280I2CWrapper::begin(int addr) {
   dev_.write = user_i2c_write;
   dev_.delay_us = user_delay_us;
   
-  bme280_init(&dev_);
-
-  return dev_.intf_rslt;
+  return bme280_init(&dev_);
 }
 
 }  // namespace bme280_i2c_wrapper

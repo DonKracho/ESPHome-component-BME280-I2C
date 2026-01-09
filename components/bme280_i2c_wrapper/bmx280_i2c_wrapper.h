@@ -60,6 +60,7 @@ class BME280I2CWrapper : public PollingComponent, public i2c::I2CDevice {
   // ========== INTERNAL METHODS ==========
   // (In most use cases you won't need these)
   void setup() override;
+  void loop() override;
   void dump_config() override;
   float get_setup_priority() const override;
   void update() override;
@@ -84,9 +85,9 @@ protected:
 private:
   int8_t begin(int i2c_addr);
 
-  bool   forceMeasure();
-  bool   startMeasure();
-  bool   readSensorData();
+  int8_t forceMeasure();
+  int8_t startMeasure();
+  int8_t readSensorData();
 
   double getTemperature() { return comp_data_.temperature; };
   double getHumidity() { return comp_data_.humidity; };
@@ -97,9 +98,14 @@ private:
 
   uint8_t dev_addr_;
   uint32_t measure_delay_;
+  uint8_t  settings_select_{0};
   struct bme280_dev dev_;
   struct bme280_settings settings_;
   struct bme280_data comp_data_;
+
+  bool   measure_pending{false};
+  time_t measure_trigger{0L};
+
 };
 
 }  // namespace bme280_i2c_wrapper
