@@ -1,4 +1,4 @@
-![Made for ESPHome](https://raw.githubusercontent.com/DonKracho/ESPHome-configurations/06cc01772bdb5ab3a25a72783a457e18d9daf7df/made-for-esphome-black-on-white.svg)
+![Made for ESPHome](https://raw.githubusercontent.com/DonKracho/ESPHome-configurations/refs/heads/main/made-for-esphome-black-on-white.svg)
 
 # ESPHome bme280_i2c_wrapper
 
